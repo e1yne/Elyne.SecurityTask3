@@ -1,110 +1,83 @@
 import configparser
 import os
-import datetime
+from datetime import datetime, timedelta
 import time
 
-
-#####не забыть поменять пути для линукс
-timeout = 15 #тут будет обновляться + в минутах
-val1 = "C:\\Users\Agapova.E\\source\\repos\\PythonApplication3\\val1\\"
-val2 = "C:\\Users\Agapova.E\\source\\repos\\PythonApplication3\\val2\\"
-
-config = configparser.RawConfigParser()
-
-# *создание папок
-#os.mkdir("val2")
-#print(os.listdir())
-
-# *создание конфигов
-
-def createConfig(path):
-    config.add_section("FileName")
-    config.set("FileName","name:file2.txt")
-    config.add_section("Logs")
-    config.set("Logs", "1")
-    config.set("Logs", "signature_one")
-    config.set("Logs", "10")
-    config.set("Logs", "signature_two")
-    config.set("Logs", "25")
-    config.set("Logs","signature_three")
-    #config.set("Logs", "15")
-    #config.set("Logs", "signature_four")
-    with open(path, "w") as config_file:
-        config.write(config_file) 
-#createConfig(val2 + "conf2.cfg")
-
-def createConfigDefault(path):
-    config.add_section("Files")
-    config.set("Files", "file1.txt")
-    config.set("Files", "file8.tar")
-    with open(path, "w") as config_file:
-        config.write(config_file) 
-
-#createConfigDefault(val2 + "default.cfg")
+timeout = 15
+val1 = "/val1/"
+val2 = "/val2/"
+logpath="/private/var/log/testlog.log"
 
 Files = (os.listdir(val1)) #список файлов из папки val1
 
 # создаём словарь: конфиг:файл из папки val1, который в нем описан, чтобы легче было искать
 Dict={}
 for file in os.listdir(val2):
-    if file != 'default.cfg':
-        f = open('C:\\Users\Agapova.E\\source\\repos\\PythonApplication3\\val2\\'+file, mode='r')
+    if file != "default.cfg":
+        f = open(val2 + file, mode='r')
         a=f.readline().replace("name:","")
         a=a.replace("\n","")
         Dict[a] = file
         f.close()
 
-print(Dict) #смотрим словарь
+# функция для вычленения дататайм'а из строки лога и проверки его соответствия диапазону времени N,заданному для сигнатуры N
+def Time_in_range(nlogline, x):
+    logtime = nlogline[0:15]
+    logtime += (" "+ str(datetime.now().year))
+    logtime = datetime.strptime(logtime, '%b %d %H:%M:%S %Y')
+    signtime = datetime.now()- timedelta(minutes=x)
+    if (logtime<=datetime.now()) and (logtime>=signtime):
+        return True
+    else:
+        return False
 
 # проверяем файлы из папки val1 по условиям из задания
+print("################### Запуск проверки файлов ###################")
 for file in Files:
-    with open('C:\\Users\Agapova.E\\source\\repos\\PythonApplication3\\val2\\default.cfg', mode='r') as default:
+    print("\n_______________________ Файл %s _______________________" % file)
+    with open(val2 + "default.cfg", mode='r') as default:
         flag = False
         for line in default:
-            if flag:  #если файл есть в конфиге default
-                #проверка, что файл был обновлён в val1 за 15 минут
-                lastchange = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(os.path.getmtime(val1 + file))) #время последнего изменения
-                print(lastchange)
-                print('Файл %s был/не был обновлён за последние 15 минут' % file)
-                break
-            if file in line:
+            if file in line:#если файл есть в конфиге default.cfg
                 flag = True
-    if not flag:
-        try:
-            path = val2+Dict[file] #нашли конфиг файл с именем файла
-            print(' Проверка сигнатур для файла %s, содержащихся в конфиге %s:' % (file,Dict[file]))
-            f=open(path)
-            #проверить, что каждая из указанных в файле сигнатур встречалась в логе за указанное в минутах время
-            for line in f:
-                if 'сигнатура1' in line:
-                   stime=int(a)
-                   if stime == 0:
-                       stime=timeout
-                   #проверяем.что line появлялась в логе за stime
-                   print('%s (не) встречалась в логах за %d минут' % (line.replace("\n",""), stime))
-                a=line.replace("\n","")
-            f.close()
-        except KeyError:
-            print('Информация о конфигурации файла %s отсутствует' % file)
+                delta = datetime.now() - (datetime.utcfromtimestamp(os.path.getmtime(val1 + file)))
+                delta = delta.total_seconds() % 60 # сколько минут назад было произведено изменение файла
+                if (delta<=timeout):
+                    print("[1.01]: Файл %s был обновлён за последние 15 минут" % file)
+                else:
+                    print("[1.02]: Файл %s не был обновлён за последние 15 минут" % file)
+                break
+        if not flag:
+            try:
+                path = val2+Dict[file] # нашли конфиг-файл с именем проверяемого файла
+                print("[2.00]: Проверка сигнатур для файла %s, содержащихся в конфиге %s:" % (file,Dict[file]))
+                f = open(path)
+                a = f.readline()# объявляем переменную и "перескакиваем" через первую строку с названием файла
+                for line in f:
+                    if 'signature' in line:
+                        n = int(a) # время N для сигнатуры N из предыдущей строки
+                        if n == 0:
+                            n=timeout
+                        total=False # флаг для проверки,что line появлялась в файле лога за n последних минут
+                        with open(logpath) as log:
+                            i=True 
+                            for logline in log:
+                                if i:
+                                    logline=logline[3:] # отбрасываем символы начала документа в первой строке (особенность тестового лог-файла)
+                                i=False
+                                if Time_in_range(logline, n):
+                                    if (line.replace("\n","") in logline): 
+                                        if (file in logline):
+                                            total=True
+                                else: 
+                                    break #если время в логах вышло за пределы искомого диапазона, перестаем искать сигнатуру в логе
+                            if total:
+                                print("[2.01]: Сигнатура %s встречается в логах testlog.log за время %d мин." % (line.replace("\n",""), n))
+                            else:
+                                print("[2.02]: Сигнатура %s не встречалась в логах testlog.log за %d мин." % (line.replace("\n",""), n))
+                    a=line.replace("\n","")
+                f.close()
+            except KeyError:
+                print("[3.00]:Информация о конфигурации файла %s отсутствует" % file)
 
-
-#- время последнего изменения файла%Y-%m-%d
-#lastchange = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(os.path.getmtime(val1 + "\\conf2.cfg")))
-#now1 = datetime.datetime.now()
-#now2 = time.strftime('%Y-%m-%d %H:%M:%S', datetime.datetime.now())
-#delta = now2 - lastchange
-
-
-
-
-# чтение
-#config.read(path)
-#print (config.get("Sign","Сигнатура1"))
-#print (config.get("Sign","Сигнатура2"))
-# изменяем/добавляем
-#config.set("Sign","Сигнатура2", "signature_five")
-#print (config.get("Sign","Сигнатура2"))
-# и обязательно сохр изменения
-#config.write(open(path, "w"))
-
-
+print("######################### Завершено! #########################")
