@@ -1,4 +1,3 @@
-import configparser
 import os
 from datetime import datetime, timedelta
 import time
